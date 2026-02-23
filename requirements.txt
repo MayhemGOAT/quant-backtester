@@ -1,0 +1,29 @@
+# ============================================
+# Apple Stock Prediction - Requirements
+# ============================================
+
+# Core Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Stock Data
+yfinance>=0.2.38
+
+# Machine Learning
+scikit-learn>=1.3.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.13.0
+
+# Utilities
+joblib>=1.3.0
+
+# ============================================
+# Optional: For Advanced Features (Future)
+# ============================================
+# xgboost>=2.0.0          # For XGBoost model
+# lightgbm>=4.0.0         # For LightGBM model
+# tensorflow>=2.13.0      # For LSTM/neural networks
+# nltk>=3.8.0             # For sentiment analysis
+# beautifulsoup4>=4.12.0  # For web scraping news
