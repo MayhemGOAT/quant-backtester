@@ -117,7 +117,7 @@ pip install -r requirements.txt
 ### ▶️ Basic Usage
 
 ```python
-python stock_prediction.py
+python backtester.py
 ```
 
 This will:
