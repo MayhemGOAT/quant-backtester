@@ -1,33 +1,33 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import yfinance as yf
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from datetime import datetime
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
-plt.style.use('seaborn-v0_8-darkgrid')
-sns.set_palette("husl")
+# Create images directory if it doesn't exist
+os.makedirs('images', exist_ok=True)
 
 def fetch_stock_data(ticker='AAPL', start_date='2010-01-01', end_date='2024-12-31'):
     print(f"Fetching data for {ticker}...")
     df = yf.download(ticker, start=start_date, end=end_date)
+    
+    if df.empty:
+        raise ValueError(f"No data downloaded for {ticker}")
+    
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
+    
     print(f"Successfully fetched {len(df)} days of data")
     print(f"Date range: {df.index[0].date()} to {df.index[-1].date()}")
     return df
 
 def add_all_features(df):
-    print("\n" + "="*60)
-    print("FEATURE ENGINEERING")
-    print("="*60)
-    
     df = df.copy()
-    
-    print("\nCreating technical indicators...")
     
     df['SMA_5'] = df['Close'].rolling(window=5).mean()
     df['SMA_10'] = df['Close'].rolling(window=10).mean()
@@ -110,16 +110,117 @@ def add_all_features(df):
     
     df = df.dropna()
     
-    print(f"Feature engineering complete!")
-    print(f"Total features created: {len(df.columns)}")
-    print(f"Usable data: {len(df)} days")
-    
+    print(f"Feature engineering complete: {len(df.columns)} features, {len(df)} days")
     return df
 
-def visualize_indicators(df):
+def build_model(df):
+    df = df.copy()
+    df['Target'] = df['Close'].shift(-1)
+    df['Target_Return'] = (df['Target'] - df['Close']) / df['Close']
+    df = df.dropna()
+    
+    feature_columns = [col for col in df.columns if col not in ['Target', 'Target_Return']]
+    
+    X = df[feature_columns].values
+    y_return = df['Target_Return'].values
+    y_actual = df['Target'].values
+    current_prices = df['Close'].values
+    dates = df.index
+    
+    train_size = int(len(X) * 0.80)
+    val_size = int(len(X) * 0.10)
+    
+    X_train = X[:train_size]
+    y_return_train = y_return[:train_size]
+    y_actual_train = y_actual[:train_size]
+    prices_train = current_prices[:train_size]
+    
+    X_val = X[train_size:train_size+val_size]
+    y_return_val = y_return[train_size:train_size+val_size]
+    y_actual_val = y_actual[train_size:train_size+val_size]
+    prices_val = current_prices[train_size:train_size+val_size]
+    
+    X_test = X[train_size+val_size:]
+    y_return_test = y_return[train_size+val_size:]
+    y_actual_test = y_actual[train_size+val_size:]
+    prices_test = current_prices[train_size+val_size:]
+    
+    dates_train = dates[:train_size]
+    dates_val = dates[train_size:train_size+val_size]
+    dates_test = dates[train_size+val_size:]
+    
+    print(f"\nTraining model on {len(X_train)} days...")
+    
+    model = RandomForestRegressor(
+        n_estimators=500,
+        max_depth=30,
+        min_samples_split=2,
+        min_samples_leaf=1,
+        max_features='sqrt',
+        random_state=42,
+        n_jobs=-1,
+        verbose=0
+    )
+    
+    model.fit(X_train, y_return_train)
+    print("Training complete!")
+    
+    y_return_train_pred = model.predict(X_train)
+    y_return_val_pred = model.predict(X_val)
+    y_return_test_pred = model.predict(X_test)
+    
+    y_train_pred = prices_train * (1 + y_return_train_pred)
+    y_val_pred = prices_val * (1 + y_return_val_pred)
+    y_test_pred = prices_test * (1 + y_return_test_pred)
+    
+    train_mae = mean_absolute_error(y_actual_train, y_train_pred)
+    val_mae = mean_absolute_error(y_actual_val, y_val_pred)
+    test_mae = mean_absolute_error(y_actual_test, y_test_pred)
+    
+    train_dir = np.mean((np.diff(y_actual_train) > 0) == (np.diff(y_train_pred) > 0)) * 100
+    val_dir = np.mean((np.diff(y_actual_val) > 0) == (np.diff(y_val_pred) > 0)) * 100
+    test_dir = np.mean((np.diff(y_actual_test) > 0) == (np.diff(y_test_pred) > 0)) * 100
+    
+    print(f"\nModel Performance:")
+    print(f"   Training:   MAE=${train_mae:.2f}, Accuracy={train_dir:.1f}%")
+    print(f"   Validation: MAE=${val_mae:.2f}, Accuracy={val_dir:.1f}%")
+    print(f"   Test:       MAE=${test_mae:.2f}, Accuracy={test_dir:.1f}%")
+    
+    fig, axes = plt.subplots(3, 1, figsize=(15, 12))
+    
+    axes[0].plot(dates_train, y_actual_train, label='Actual', linewidth=2, color='blue', alpha=0.7)
+    axes[0].plot(dates_train, y_train_pred, label='Predicted', linewidth=2, color='red', alpha=0.7)
+    axes[0].set_title('Training Set', fontsize=14, fontweight='bold')
+    axes[0].set_ylabel('Price ($)')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+    
+    axes[1].plot(dates_val, y_actual_val, label='Actual', linewidth=2, color='blue', alpha=0.7)
+    axes[1].plot(dates_val, y_val_pred, label='Predicted', linewidth=2, color='red', alpha=0.7)
+    axes[1].set_title('Validation Set', fontsize=14, fontweight='bold')
+    axes[1].set_ylabel('Price ($)')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+    
+    axes[2].plot(dates_test, y_actual_test, label='Actual', linewidth=2, color='blue')
+    axes[2].plot(dates_test, y_test_pred, label='Predicted', linewidth=2, color='red', alpha=0.7)
+    axes[2].set_title('Test Set', fontsize=14, fontweight='bold')
+    axes[2].set_xlabel('Date')
+    axes[2].set_ylabel('Price ($)')
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('images/predictions_all_sets.png', dpi=300, bbox_inches='tight')
+    print("Saved: images/predictions_all_sets.png")
+    plt.show()
+    
+    return model, feature_columns, test_mae, test_dir
+
+def visualize_technical_indicators(df):
     print("\nCreating technical indicator visualizations...")
     
-    fig, axes = plt.subplots(4, 1, figsize=(15, 12))
+    fig, axes = plt.subplots(3, 1, figsize=(15, 10))
     recent_data = df.tail(500)
     
     ax1 = axes[0]
@@ -154,205 +255,85 @@ def visualize_indicators(df):
     ax3.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
     ax3.set_title('MACD (Moving Average Convergence Divergence)', fontsize=14, fontweight='bold')
     ax3.set_ylabel('MACD')
+    ax3.set_xlabel('Date')
     ax3.legend(loc='best')
     ax3.grid(True, alpha=0.3)
     
-    ax4 = axes[3]
-    ax4_vol = ax4.twinx()
-    ax4.plot(recent_data.index, recent_data['Volatility_10'], label='10-Day Volatility', 
-             linewidth=2, color='orange')
-    ax4_vol.bar(recent_data.index, recent_data['Volume'], alpha=0.3, color='lightblue', label='Volume')
-    ax4.set_title('Volatility and Volume', fontsize=14, fontweight='bold')
-    ax4.set_ylabel('Volatility', color='orange')
-    ax4_vol.set_ylabel('Volume', color='blue')
-    ax4.set_xlabel('Date')
-    ax4.legend(loc='upper left')
-    ax4_vol.legend(loc='upper right')
-    ax4.grid(True, alpha=0.3)
-    
     plt.tight_layout()
+    plt.savefig('images/technical_indicators.png', dpi=300, bbox_inches='tight')
+    print("Saved: images/technical_indicators.png")
     plt.show()
 
-def build_model(df):
-    print("\n" + "="*60)
-    print("BUILDING PREDICTION MODEL")
-    print("="*60)
-    
-    df = df.copy()
-    
-    # Predict price change percentage instead of absolute price
-    df['Target'] = df['Close'].shift(-1)
-    df['Target_Return'] = (df['Target'] - df['Close']) / df['Close']
-    df = df.dropna()
-    
-    feature_columns = [col for col in df.columns if col not in ['Target', 'Target_Return']]
-    
-    print(f"\nUsing {len(feature_columns)} features")
-    print("Predicting next-day price using return-based approach")
-    
-    X = df[feature_columns].values
-    y_return = df['Target_Return'].values
-    y_actual = df['Target'].values
-    current_prices = df['Close'].values
-    dates = df.index
-    
-    train_size = int(len(X) * 0.80)
-    val_size = int(len(X) * 0.10)
-    
-    X_train = X[:train_size]
-    y_return_train = y_return[:train_size]
-    y_actual_train = y_actual[:train_size]
-    prices_train = current_prices[:train_size]
-    
-    X_val = X[train_size:train_size+val_size]
-    y_return_val = y_return[train_size:train_size+val_size]
-    y_actual_val = y_actual[train_size:train_size+val_size]
-    prices_val = current_prices[train_size:train_size+val_size]
-    
-    X_test = X[train_size+val_size:]
-    y_return_test = y_return[train_size+val_size:]
-    y_actual_test = y_actual[train_size+val_size:]
-    prices_test = current_prices[train_size+val_size:]
-    
-    dates_train = dates[:train_size]
-    dates_val = dates[train_size:train_size+val_size]
-    dates_test = dates[train_size+val_size:]
-    
-    print(f"\nData Split:")
-    print(f"   Training: {len(X_train)} samples ({dates_train[0].date()} to {dates_train[-1].date()})")
-    print(f"   Validation: {len(X_val)} samples ({dates_val[0].date()} to {dates_val[-1].date()})")
-    print(f"   Testing: {len(X_test)} samples ({dates_test[0].date()} to {dates_test[-1].date()})")
-    
-    print(f"\nTraining Random Forest model...")
-    model = RandomForestRegressor(
-        n_estimators=500,
-        max_depth=30,
-        min_samples_split=2,
-        min_samples_leaf=1,
-        max_features='sqrt',
-        random_state=42,
-        n_jobs=-1,
-        verbose=0
-    )
-    
-    model.fit(X_train, y_return_train)
-    print("Training complete!")
-    
-    # Predict returns and convert back to prices
-    y_return_train_pred = model.predict(X_train)
-    y_return_val_pred = model.predict(X_val)
-    y_return_test_pred = model.predict(X_test)
-    
-    # Convert predicted returns back to actual prices
-    y_train_pred = prices_train * (1 + y_return_train_pred)
-    y_val_pred = prices_val * (1 + y_return_val_pred)
-    y_test_pred = prices_test * (1 + y_return_test_pred)
-    
-    train_mae = mean_absolute_error(y_actual_train, y_train_pred)
-    val_mae = mean_absolute_error(y_actual_val, y_val_pred)
-    test_mae = mean_absolute_error(y_actual_test, y_test_pred)
-    
-    train_rmse = np.sqrt(mean_squared_error(y_actual_train, y_train_pred))
-    val_rmse = np.sqrt(mean_squared_error(y_actual_val, y_val_pred))
-    test_rmse = np.sqrt(mean_squared_error(y_actual_test, y_test_pred))
-    
-    train_dir = np.mean((np.diff(y_actual_train) > 0) == (np.diff(y_train_pred) > 0)) * 100
-    val_dir = np.mean((np.diff(y_actual_val) > 0) == (np.diff(y_val_pred) > 0)) * 100
-    test_dir = np.mean((np.diff(y_actual_test) > 0) == (np.diff(y_test_pred) > 0)) * 100
-    
-    print(f"\nModel Performance:")
-    print(f"\n   Training Set:")
-    print(f"   MAE: ${train_mae:.2f}")
-    print(f"   RMSE: ${train_rmse:.2f}")
-    print(f"   Directional Accuracy: {train_dir:.2f}%")
-    
-    print(f"\n   Validation Set:")
-    print(f"   MAE: ${val_mae:.2f}")
-    print(f"   RMSE: ${val_rmse:.2f}")
-    print(f"   Directional Accuracy: {val_dir:.2f}%")
-    
-    print(f"\n   Test Set:")
-    print(f"   MAE: ${test_mae:.2f}")
-    print(f"   RMSE: ${test_rmse:.2f}")
-    print(f"   Directional Accuracy: {test_dir:.2f}%")
-    
-    fig, axes = plt.subplots(3, 1, figsize=(15, 12))
-    
-    axes[0].plot(dates_train, y_actual_train, label='Actual Price', linewidth=2, color='blue', alpha=0.7)
-    axes[0].plot(dates_train, y_train_pred, label='Predicted Price', linewidth=2, color='red', alpha=0.7)
-    axes[0].set_title('Training Set: Actual vs Predicted Prices', fontsize=14, fontweight='bold')
-    axes[0].set_ylabel('Price ($)')
-    axes[0].legend()
-    axes[0].grid(True, alpha=0.3)
-    
-    axes[1].plot(dates_val, y_actual_val, label='Actual Price', linewidth=2, color='blue', alpha=0.7)
-    axes[1].plot(dates_val, y_val_pred, label='Predicted Price', linewidth=2, color='red', alpha=0.7)
-    axes[1].set_title('Validation Set: Actual vs Predicted Prices', fontsize=14, fontweight='bold')
-    axes[1].set_ylabel('Price ($)')
-    axes[1].legend()
-    axes[1].grid(True, alpha=0.3)
-    
-    axes[2].plot(dates_test, y_actual_test, label='Actual Price', linewidth=2, color='blue')
-    axes[2].plot(dates_test, y_test_pred, label='Predicted Price', linewidth=2, color='red', alpha=0.7)
-    axes[2].set_title('Test Set: Actual vs Predicted Prices', fontsize=14, fontweight='bold')
-    axes[2].set_xlabel('Date')
-    axes[2].set_ylabel('Price ($)')
-    axes[2].legend()
-    axes[2].grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
+def visualize_feature_importance(model, feature_columns):
+    print("\nCreating feature importance plot...")
     
     importances = model.feature_importances_
     feature_importance_df = pd.DataFrame({
         'Feature': feature_columns,
         'Importance': importances
-    }).sort_values('Importance', ascending=False).head(25)
+    }).sort_values('Importance', ascending=False).head(20)
     
-    plt.figure(figsize=(12, 10))
+    plt.figure(figsize=(10, 8))
     plt.barh(feature_importance_df['Feature'], feature_importance_df['Importance'], color='#6A4C93')
     plt.xlabel('Importance')
-    plt.title('Top 25 Feature Importances', fontsize=14, fontweight='bold')
+    plt.title('Top 20 Feature Importances', fontsize=14, fontweight='bold')
     plt.gca().invert_yaxis()
     plt.tight_layout()
+    plt.savefig('images/feature_importance.png', dpi=300, bbox_inches='tight')
+    print("Saved: images/feature_importance.png")
     plt.show()
+
+def predict_next_day(model, df, feature_columns):
+    print("\n" + "="*60)
+    print("NEXT DAY PREDICTION")
+    print("="*60)
     
-    return model, test_mae, test_dir
+    latest_data = df[feature_columns].iloc[-1:].values
+    current_price = df['Close'].iloc[-1]
+    current_date = df.index[-1]
+    
+    print(f"\nCurrent Date: {current_date.date()}")
+    print(f"Current Price: ${current_price:.2f}")
+    
+    predicted_return = model.predict(latest_data)[0]
+    predicted_price = current_price * (1 + predicted_return)
+    
+    print(f"\nNext Day Prediction:")
+    print(f"   Predicted Return: {predicted_return*100:+.2f}%")
+    print(f"   Predicted Price: ${predicted_price:.2f}")
+    print(f"   Direction: {'UP' if predicted_return > 0 else 'DOWN'}")
+    
+    rsi = df['RSI'].iloc[-1]
+    macd = df['MACD'].iloc[-1]
+    signal = df['Signal_Line'].iloc[-1]
+    sma20 = df['SMA_20'].iloc[-1]
+    sma50 = df['SMA_50'].iloc[-1]
+    
+    print(f"\nKey Indicators:")
+    print(f"   RSI: {rsi:.2f}", end="")
+    if rsi > 70:
+        print(" (Overbought)")
+    elif rsi < 30:
+        print(" (Oversold)")
+    else:
+        print(" (Neutral)")
+    print(f"   MACD: {macd:.2f}, Signal: {signal:.2f} - {'Bullish' if macd > signal else 'Bearish'}")
+    print(f"   Price vs SMA20: {'Above' if current_price > sma20 else 'Below'}")
+    print(f"   Price vs SMA50: {'Above' if current_price > sma50 else 'Below'}")
+    
+    return predicted_price
 
 if __name__ == "__main__":
-    
     print("\n" + "="*60)
-    print("APPLE STOCK PRICE PREDICTION PROJECT")
+    print("APPLE STOCK PRICE PREDICTION")
     print("="*60)
-    print("\nObjective: Build ML model to predict next-day stock prices")
-    print("-"*60)
     
-    df = fetch_stock_data('AAPL', start_date='2010-01-01', end_date='2024-12-31')
+    df = fetch_stock_data('AAPL')
     df = add_all_features(df)
-    visualize_indicators(df)
-    model, test_mae, test_dir = build_model(df)
+    visualize_technical_indicators(df)
+    model, feature_columns, test_mae, test_dir = build_model(df)
+    visualize_feature_importance(model, feature_columns)
+    predict_next_day(model, df, feature_columns)
     
-    print("\n" + "="*60)
-    print("PROJECT SUMMARY")
-    print("="*60)
-    print("\nAccomplishments:")
-    print("   - Collected 15 years of historical stock data")
-    print("   - Engineered 80+ technical features")
-    print("   - Built Random Forest prediction model")
-    print(f"   - Achieved {test_dir:.1f}% directional accuracy")
-    print(f"   - Average prediction error: ${test_mae:.2f}")
-    
-    print("\nKey Insights:")
-    print("   - Model captures overall trends effectively")
-    print("   - Technical indicators provide predictive power")
-    print("   - Challenging to predict during rapid market changes")
-    print("   - Performance validates ML approach to stock prediction")
-    
-    print("\nFuture Improvements:")
-    print("   - Add sentiment analysis from news/social media")
-    print("   - Incorporate fundamental data (earnings, financials)")
-    print("   - Test ensemble methods combining multiple models")
-    print("   - Experiment with LSTM/GRU neural networks")
-    print("   - Extend to portfolio of multiple stocks")
-    
+    print("\nAll plots saved to 'images/' folder")
     print("\n" + "="*60)
