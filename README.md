@@ -8,7 +8,7 @@ A machine learning project that predicts next-day Apple (AAPL) stock closing pri
 
 ## 🎯 Project Overview
 
-This project demonstrates the application of machine learning to financial time series forecasting. The model achieves **58-62% directional accuracy** in predicting whether Apple's stock will go up or down the next day, outperforming random guessing (50%) and approaching professional trader performance levels.
+This capstone project demonstrates the application of machine learning to financial time series forecasting. The model achieves **58-62% directional accuracy** in predicting whether Apple's stock will go up or down the next day, outperforming random guessing (50%) and approaching professional trader performance levels.
 
 ### ✨ Key Features
 
@@ -27,9 +27,26 @@ This project demonstrates the application of machine learning to financial time 
 | 📅 Test Period | 2023-2024 |
 | 📚 Training Data | 2010-2022 |
 
-### 📊 Performance Visualization
+### 📊 Model Performance
 
-The model successfully tracks Apple's price movement from $180 to $260 during the 2024 surge, demonstrating effective generalization to unseen data.
+![Prediction Results](images/predictions_all_sets.png)
+
+The model successfully tracks Apple's price movement across all datasets:
+- **Training Set (top)**: Near-perfect fit on 2010-2022 data
+- **Validation Set (middle)**: Strong generalization on 2022-2023
+- **Test Set (bottom)**: Successfully tracks surge from $180 to $260 in 2024
+
+### 📈 Technical Indicators
+
+![Technical Indicators](images/technical_indicators.png)
+
+RSI, MACD, and Bollinger Bands provide the model with momentum and volatility signals.
+
+### 🎯 Feature Importance
+
+![Feature Importance](images/feature_importance.png)
+
+The model learns from a balanced set of features rather than over-relying on current price alone.
 
 ## 💡 Technical Approach
 
@@ -261,7 +278,7 @@ Stock prices are fundamentally difficult to predict because:
 ```
 stock-prediction/
 │
-├── 📄 quant_backtester.py           # Main script
+├── 📄 stock_prediction.py          # Main script
 ├── 📘 README.md                     # This file
 ├── 📋 requirements.txt              # Dependencies
 │
