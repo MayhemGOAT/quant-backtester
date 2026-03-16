@@ -8,7 +8,7 @@ A machine learning project that predicts next-day Apple (AAPL) stock closing pri
 
 ## 🎯 Project Overview
 
-This capstone project demonstrates the application of machine learning to financial time series forecasting. The model achieves **58-62% directional accuracy** in predicting whether Apple's stock will go up or down the next day, outperforming random guessing (50%) and approaching professional trader performance levels.
+This project demonstrates the application of machine learning to financial time series forecasting. The model achieves **58-62% directional accuracy** in predicting whether Apple's stock will go up or down the next day, outperforming random guessing (50%) and approaching professional trader performance levels.
 
 ### ✨ Key Features
 
