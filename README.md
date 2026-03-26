@@ -1,363 +1,159 @@
-# 📈 Apple Stock Price Prediction using Machine Learning
+# Apple Stock Return Forecasting
 
-A machine learning project that predicts next-day Apple (AAPL) stock closing prices using Random Forest Regression with 80+ technical indicators.
+An end-to-end machine learning pipeline investigating whether technical indicators yield a reliable directional edge on next-day AAPL returns using Random Forest Regression.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3+-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-## 🎯 Project Overview
+## Overview
 
-This project demonstrates the application of machine learning to financial time series forecasting. The model achieves **58-62% directional accuracy** in predicting whether Apple's stock will go up or down the next day, outperforming random guessing (50%) and approaching professional trader performance levels.
+This project applies supervised machine learning to financial time series forecasting. The pipeline engineers 60+ features from 15 years of AAPL price and volume data, trains a Random Forest regressor to predict next-day percentage returns, and evaluates directional accuracy on a held-out test set.
 
-### ✨ Key Features
+**Key finding:** Technical indicators alone do not yield a reliable directional edge on daily AAPL returns. The model achieves ~65% directional accuracy on training data but drops to ~49–51% on out-of-sample data — statistically indistinguishable from random. This result is consistent with the Efficient Market Hypothesis: in a heavily traded large-cap stock, technical patterns are rapidly arbitraged away.
 
-- 📊 **15 years of historical data** (2010-2024)
-- 🔧 **80+ engineered features** including technical indicators
-- 🌲 **Random Forest Regressor** with 500 trees
-- 📉 **Return-based prediction** approach for scale invariance
-- ✅ **Comprehensive evaluation** with train/validation/test splits
+The project's value is in the rigor of the pipeline and the diagnosis of *why* the model fails — not in producing inflated accuracy numbers.
 
-## 🏆 Results
+## Results
 
-| Metric | Value |
-|--------|-------|
-| 🎯 Directional Accuracy | 58-62% |
-| 💰 Mean Absolute Error (MAE) | $3-8 |
-| 📅 Test Period | 2023-2024 |
-| 📚 Training Data | 2010-2022 |
+| Split | Period | Directional Accuracy | MAE |
+|---|---|---|---|
+| Training | 2010–2022 | 65.2% | $0.52 |
+| Validation | 2022–2023 | 51.5% | $2.25 |
+| Test | 2023–2024 | 48.6% | $2.08 |
 
-### 📊 Model Performance
+The sharp drop from training to validation/test accuracy is a clear signature of overfitting — the model learns noise patterns in the training data that do not generalize.
+
+## Model Performance
 
 ![Prediction Results](images/predictions_all_sets.png)
 
-The model successfully tracks Apple's price movement across all datasets:
-- **Training Set (top)**: Near-perfect fit on 2010-2022 data
-- **Validation Set (middle)**: Strong generalization on 2022-2023
-- **Test Set (bottom)**: Successfully tracks surge from $180 to $260 in 2024
+- **Training Set (top)**: Model tracks in-sample prices closely
+- **Validation Set (middle)**: Generalization begins to break down
+- **Test Set (bottom)**: Predictions revert toward a naive baseline
 
-### 📈 Technical Indicators
+## Technical Indicators
 
 ![Technical Indicators](images/technical_indicators.png)
 
-RSI, MACD, and Bollinger Bands provide the model with momentum and volatility signals.
+RSI, MACD, and Bollinger Bands are included as momentum and volatility signals. Despite their widespread use in technical analysis, none produced reliable out-of-sample directional signal in this study.
 
-### 🎯 Feature Importance
+## Feature Importance
 
 ![Feature Importance](images/feature_importance.png)
 
-The model learns from a balanced set of features rather than over-relying on current price alone.
+The model distributes importance across many features rather than concentrating on a few — a pattern that often indicates the model is fitting noise rather than a stable signal.
 
-## 💡 Technical Approach
+## Technical Approach
 
-### 🚀 The Critical Innovation
+### Return-Based Prediction
 
-Instead of predicting absolute prices (which fails when prices exceed training range), the model predicts **percentage returns**:
+Rather than predicting absolute prices — which breaks down when test prices exceed the training range — the model predicts next-day percentage returns:
 
 ```python
-# ❌ Traditional approach (fails)
-Target = Tomorrow's price  # Gets stuck at historical levels
-
-# ✅ Our approach (works)
-Target = (Tomorrow - Today) / Today  # Scale-invariant
-Predicted_Price = Current_Price × (1 + Predicted_Return)
+# Scale-invariant target
+target = (tomorrow_close - today_close) / today_close
+predicted_price = today_close * (1 + predicted_return)
 ```
 
-This allows the model to work across any price level, from $10 to $260.
+### Feature Set (60+ indicators)
 
-## 🔍 Features
+**Trend:** SMA (5, 10, 20, 50, 200-day), EMA (10, 20, 50-day), price position relative to moving averages, SMA crossover signals
 
-### 📊 80+ Technical Indicators
+**Momentum:** RSI, MACD + signal line + histogram, rate of change (10, 20-day), momentum (5, 10, 20-day as pct_change)
 
-**📈 Trend Indicators:**
-- Simple Moving Averages (SMA): 5, 10, 20, 50, 200-day
-- Exponential Moving Averages (EMA): 10, 20, 50-day
-- Price position relative to moving averages
+**Volatility:** Bollinger Bands (upper, lower, width, position), ATR, rolling std (5, 10, 20-day)
 
-**⚡ Momentum Indicators:**
-- RSI (Relative Strength Index)
-- MACD (Moving Average Convergence Divergence)
-- Rate of Change (10, 20-day)
-- Momentum (5, 10, 20-day)
+**Lag features:** Return lags (1, 2, 3, 5, 10, 20-day), volume lags — raw price lags excluded to avoid leakage
 
-**📉 Volatility Measures:**
-- Bollinger Bands (upper, lower, width, position)
-- Average True Range (ATR)
-- Rolling standard deviation (5, 10, 20-day)
+**Volume:** Volume SMAs, volume ratio, price-volume interaction
 
-**⏮️ Historical Features:**
-- Lag prices: 1, 2, 3, 5, 10, 20 days
-- Lag returns: 1, 2, 3, 5, 10, 20 days
-- Lag volume: 1, 2, 3, 5, 10, 20 days
+**Price patterns:** Candlestick body/shadow ratios, daily range %, gap %
 
-**📦 Volume Analysis:**
-- Volume moving averages
-- Volume ratios
-- Price-volume interactions
+### Model
 
-**🕯️ Price Patterns:**
-- Candlestick patterns (shadows, body size)
-- Daily range and gaps
-- High/Low ratios
+```python
+RandomForestRegressor(
+    n_estimators=500,
+    max_depth=10,
+    min_samples_split=20,
+    min_samples_leaf=10,
+    max_features='sqrt',
+    random_state=42
+)
+```
 
-## 🛠️ Installation
+### Data Split (chronological — no shuffling)
 
-### 📋 Requirements
+| Split | Period | Days |
+|---|---|---|
+| Training (80%) | 2010–2022 | ~2,858 |
+| Validation (10%) | 2022–2023 | ~358 |
+| Test (10%) | 2023–2024 | ~358 |
+
+Chronological ordering is strictly enforced throughout. Raw OHLCV columns are excluded from the feature matrix — only engineered features are passed to the model — to prevent lookahead bias.
+
+## What I Learned
+
+**Overfitting is the central challenge.** Even with regularized hyperparameters (`max_depth=10`, `min_samples_leaf=10`), the model memorizes training patterns that don't generalize. Daily stock returns are dominated by noise, and a 60+ feature space gives the model too many opportunities to fit that noise.
+
+**The EMH holds here.** AAPL is one of the most liquid, most-watched stocks in the world. Any technical pattern that reliably predicted next-day direction would be arbitraged away almost immediately. This doesn't mean ML has no role in quantitative finance — it means daily technical indicators on a single large-cap equity are a weak signal source.
+
+**What might actually help:**
+- Higher-frequency data (intraday) where microstructure effects are more exploitable
+- Alternative data sources: earnings sentiment, options flow, macro indicators
+- Cross-asset features: sector ETFs, VIX, yield curve
+- Shorter-horizon models that are less exposed to news-driven overnight gaps
+
+## Limitations
+
+- Technical data only — no fundamentals, sentiment, or macro features
+- Single asset — no cross-sectional or portfolio-level analysis
+- Daily resolution — microstructure effects that drive HFT alpha are invisible here
+- No transaction costs, slippage, or market impact modeled
+- Directional accuracy alone is not a sufficient basis for a trading strategy
+
+## Future Work
+
+- Incorporate earnings sentiment and options flow data
+- Extend to multi-asset cross-sectional modeling
+- Experiment with walk-forward validation instead of a single fixed split
+- Try gradient boosting (XGBoost/LightGBM) with tighter regularization
+- Explore intraday data to access higher signal-to-noise regimes
+
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 🐍 Python Version
+Requires Python 3.8+.
 
-- Python 3.8+
+## Usage
 
-## 🚀 Usage
-
-### ▶️ Basic Usage
-
-```python
-python backtester.py
+```bash
+python quantbacktester.py
 ```
 
-This will:
-1. 📥 Download 15 years of Apple stock data
-2. 🔧 Engineer 80+ features
-3. 🤖 Train the Random Forest model
-4. 📊 Display performance metrics and visualizations
-5. 🔮 Predict the next trading day's price
-
-### 📤 Output
-
-The script generates:
-- 📊 **Technical indicator visualizations** (RSI, MACD, Bollinger Bands)
-- 📈 **Prediction graphs** for training, validation, and test sets
-- 🎯 **Feature importance analysis**
-- 🔮 **Next-day price prediction** with confidence indicators
-
-### 💻 Example Output
+## Project Structure
 
 ```
-============================================================
-🍎 APPLE STOCK PRICE PREDICTION PROJECT
-============================================================
-
-Fetching data for AAPL...
-✅ Successfully fetched 3700 days of data
-
-🔧 Feature engineering complete!
-Total features created: 82
-
-🌲 Training Random Forest model...
-✅ Training complete!
-
-📊 Model Performance:
-
-Test Set:
-   MAE: $6.47
-   RMSE: $8.23
-   Directional Accuracy: 58.9%
-
-============================================================
-🔮 PREDICTING NEXT TRADING DAY
-============================================================
-
-Current Date: 2024-12-30
-Current Closing Price: $253.45
-
-Prediction for next trading day:
-   Predicted Return: +0.35%
-   Predicted Price: $254.34
-   Expected Change: $0.89
-   Direction: ⬆️ UP
-
-Key Indicators:
-   RSI: 62.45 (Neutral)
-   MACD Status: Bullish
-   Price above SMA20 and SMA50
+quant-backtester/
+├── quantbacktester.py    # Main pipeline
+├── README.md
+├── requirements.txt
+└── images/
+    ├── predictions_all_sets.png
+    ├── technical_indicators.png
+    └── feature_importance.png
 ```
 
-## 🏗️ Model Architecture
+## Data Source
 
-### 🌲 Random Forest Regressor
+Yahoo Finance via `yfinance`.
 
-```python
-RandomForestRegressor(
-    n_estimators=500,      # 500 decision trees
-    max_depth=30,          # Maximum tree depth
-    min_samples_split=2,   # Minimum samples to split
-    max_features='sqrt',   # Features per split
-    random_state=42
-)
-```
+## License
 
-### 📊 Data Split
+MIT License. For educational purposes only. Not financial advice.
 
-- 📚 **Training Set (80%)**: 2010-2022 (~2,960 days)
-- ✅ **Validation Set (10%)**: 2022-2023 (~370 days)
-- 🧪 **Test Set (10%)**: 2023-2024 (~370 days)
 
-⚠️ Chronological split is critical for time series to prevent data leakage.
-
-## 🎯 Why This Approach Works
-
-### ❌ Problem with Traditional Methods
-
-Predicting absolute prices fails when:
-- Training data: $10-$180 (2010-2022)
-- Test data: $180-$260 (2023-2024)
-- Model prediction: Stuck around $180 ❌
-
-### ✅ Solution: Return-Based Prediction
-
-Predicting percentage returns works because:
-- A +2% gain has the same pattern at any price level
-- Model learns: "RSI > 70 + MACD positive → +1.5% return"
-- Applies to $50, $150, or $250 ✓
-
-## 📊 Understanding the Results
-
-### 🎯 Why 58% Accuracy is Good
-
-| Accuracy Level | Interpretation |
-|---------------|----------------|
-| 50% | 🎲 Random guessing (coin flip) |
-| 52-54% | 📉 Weak signal |
-| **55-60%** | **🏆 Professional trader level** ← We are here |
-| 60-65% | 💼 Hedge fund performance |
-| 70%+ | ⚠️ Suspicious (likely overfitting) |
-
-### 🌐 Market Prediction Challenges
-
-Stock prices are fundamentally difficult to predict because:
-- 📰 **Efficient Market Hypothesis**: Most predictable patterns are already exploited
-- 📢 **News-driven**: 95% of movements driven by unexpected events
-- 🔧 **Technical-only limitation**: We don't use earnings, sentiment, or macro data
-- ⏱️ **Daily timeframe**: Short-term predictions are hardest (dominated by noise)
-
-## ⚠️ Limitations
-
-- 📰 **Cannot predict news events**: Earnings surprises, Fed announcements, geopolitical shocks
-- 📊 **Technical data only**: No fundamental analysis, sentiment, or alternative data
-- 📜 **Historical patterns**: Assumes past patterns continue (may not hold during regime changes)
-- 🌪️ **Market conditions**: Performance may degrade during unprecedented market events
-- 🔄 **Retraining needed**: Model should be retrained regularly as markets evolve
-
-## 🔮 Future Improvements
-
-### 🚀 Planned Enhancements
-
-1. **💬 Sentiment Analysis**
-   - News headline analysis
-   - Social media sentiment (Twitter, Reddit)
-   - Analyst ratings
-
-2. **📈 Fundamental Data**
-   - Earnings reports
-   - Revenue growth
-   - P/E ratios
-   - Balance sheet metrics
-
-3. **🤖 Alternative Models**
-   - LSTM/GRU neural networks
-   - XGBoost
-   - Ensemble methods
-
-4. **📊 Multi-Stock Portfolio**
-   - Extend to FAANG stocks
-   - Correlation analysis
-   - Portfolio optimization
-
-5. **🌍 Macro Indicators**
-   - Interest rates
-   - Inflation data
-   - Economic indicators
-
-## 📁 Project Structure
-
-```
-stock-prediction/
-│
-├── 📄 stock_prediction.py          # Main script
-├── 📘 README.md                     # This file
-├── 📋 requirements.txt              # Dependencies
-│
-└── 📂 outputs/
-    ├── 📊 technical_indicators.png  # Indicator visualizations
-    ├── 📈 predictions.png           # Actual vs predicted plots
-    └── 🎯 feature_importance.png    # Feature importance chart
-```
-
-## 🔬 Technical Details
-
-### 🔧 Feature Engineering Process
-
-1. **📥 Raw data collection**: OHLCV (Open, High, Low, Close, Volume)
-2. **📊 Technical indicator calculation**: RSI, MACD, Bollinger Bands
-3. **⏮️ Lag feature creation**: Historical prices and returns
-4. **📏 Normalization**: Percentage-based features for scale invariance
-5. **🧹 NaN handling**: Drop rows with insufficient historical data
-
-### 🎓 Model Training
-
-1. **🔧 Data preprocessing**: Feature engineering on raw prices
-2. **🎯 Target creation**: Next-day return = (Tomorrow - Today) / Today
-3. **✂️ Train-test split**: Chronological 80/10/10 split
-4. **🌲 Model fitting**: Random Forest on percentage returns
-5. **🔮 Prediction**: Convert predicted returns back to prices
-6. **📊 Evaluation**: MAE, RMSE, directional accuracy
-
-## 📊 Performance Metrics Explained
-
-### 💰 Mean Absolute Error (MAE)
-Average dollar amount predictions are off:
-```
-MAE = Average(|Actual - Predicted|)
-```
-
-### 📉 Root Mean Squared Error (RMSE)
-Penalizes large errors more heavily:
-```
-RMSE = √(Average((Actual - Predicted)²))
-```
-
-### 🎯 Directional Accuracy
-Percentage of correct up/down predictions:
-```
-Directional Accuracy = % of (sign(Actual change) == sign(Predicted change))
-```
-
-## 💡 Key Insights
-
-1. 📏 **Scale-invariant prediction is critical** for stocks with high growth
-2. 🔧 **More features improve performance** up to a point (diminishing returns)
-3. ⏰ **Time series validation is essential** to prevent data leakage
-4. 🌐 **Market efficiency limits** maximum achievable accuracy
-5. 🤝 **Combining multiple indicators** works better than any single feature
-
-## 🤝 Contributing
-
-Contributions are welcome! Areas for improvement:
-- 📥 Additional data sources
-- 🤖 Alternative model architectures
-- 🔧 Enhanced feature engineering
-- 📊 Better visualization tools
-- 📈 Multi-stock support
-
-## 📄 License
-
-MIT License - feel free to use for educational purposes.
-
-## 🙏 Acknowledgments
-
-- 📊 Data source: Yahoo Finance (via yfinance library)
-- 💡 Inspiration: Technical analysis and quantitative trading literature
-- 🎓 Methodology: Standard ML practices for time series forecasting
-
-## 📧 Contact
-
-For questions or collaboration opportunities, please open an issue on GitHub.
-
----
-
-⚠️ **Disclaimer**: This project is for educational purposes only. Stock market prediction is inherently uncertain, and past performance does not guarantee future results. Do not use this model for actual trading without proper risk management and additional validation.
