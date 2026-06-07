@@ -1,26 +1,51 @@
-# Apple Stock Return Forecasting
+# FinPulse
 
-An end-to-end machine learning pipeline investigating whether technical indicators yield a reliable directional edge on next-day AAPL returns using Random Forest Regression.
+An end-to-end machine learning pipeline that combines technical indicators with **FinBERT** financial sentiment analysis to investigate whether news-driven signals improve next-day stock return forecasting.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3+-orange.svg)
+![FinBERT](https://img.shields.io/badge/FinBERT-ProsusAI-blueviolet.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## Overview
 
-This project applies supervised machine learning to financial time series forecasting. The pipeline engineers 60+ features from 15 years of AAPL price and volume data, trains a Random Forest regressor to predict next-day percentage returns, and evaluates directional accuracy on a held-out test set.
+FinPulse extends a technical-analysis forecasting pipeline with NLP features derived from Yahoo Finance headlines. The system:
 
-**Key finding:** Technical indicators alone do not yield a reliable directional edge on daily AAPL returns. The model achieves ~65% directional accuracy on training data but drops to ~49–51% on out-of-sample data — statistically indistinguishable from random. This result is consistent with the Efficient Market Hypothesis: in a heavily traded large-cap stock, technical patterns are rapidly arbitraged away.
+1. Engineers 60+ technical features from 15 years of AAPL price and volume data
+2. Fetches recent financial news and scores each headline with [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert)
+3. Aggregates daily sentiment scores and rolling sentiment features
+4. Trains a Random Forest regressor to predict next-day percentage returns
+5. Evaluates directional accuracy on a held-out test set
 
-The project's value is in the rigor of the pipeline and the diagnosis of *why* the model fails — not in producing inflated accuracy numbers.
+**Key finding:** Technical indicators alone do not yield a reliable directional edge on daily AAPL returns. Adding FinBERT sentiment from recent Yahoo Finance headlines provides an alternative data layer, but Yahoo's news API only exposes recent articles — so sentiment features are most informative for live/next-day inference rather than full historical backtesting.
+
+The project's value is in the rigor of the pipeline, the FinBERT integration, and the diagnosis of *why* daily prediction remains difficult — not in producing inflated accuracy numbers.
+
+## FinBERT Sentiment Analysis
+
+FinBERT is a BERT model fine-tuned on financial text. For each news headline, FinPulse computes positive, negative, and neutral probabilities and derives:
+
+| Feature | Description |
+|---|---|
+| `Sentiment_Score` | P(positive) − P(negative), range −1 to +1 |
+| `Sentiment_Positive` | Average positive probability |
+| `Sentiment_Negative` | Average negative probability |
+| `Sentiment_Neutral` | Average neutral probability |
+| `News_Count` | Headlines scored that day |
+| `Sentiment_MA_5` / `Sentiment_MA_20` | Rolling sentiment moving averages |
+| `Sentiment_Momentum_5` | 5-day change in sentiment score |
+| `Sentiment_Volatility_10` | 10-day rolling std of sentiment |
+| `Sentiment_Bullish` / `Sentiment_Bearish` | Binary flags for strong sentiment |
+
+Sentiment is forward-filled for up to 3 days when no new headlines appear, then defaults to neutral (0).
 
 ## Results
 
 | Split | Period | Directional Accuracy | MAE |
 |---|---|---|---|
-| Training | 2010–2022 | 65.2% | $0.52 |
-| Validation | 2022–2023 | 51.5% | $2.25 |
-| Test | 2023–2024 | 48.6% | $2.08 |
+| Training | 2010–2022 | ~65% | ~$0.52 |
+| Validation | 2022–2023 | ~51% | ~$2.25 |
+| Test | 2023–2024 | ~49% | ~$2.08 |
 
 The sharp drop from training to validation/test accuracy is a clear signature of overfitting — the model learns noise patterns in the training data that do not generalize.
 
@@ -28,56 +53,57 @@ The sharp drop from training to validation/test accuracy is a clear signature of
 
 ![Prediction Results](images/predictions_all_sets.png)
 
-- **Training Set (top)**: Model tracks in-sample prices closely
-- **Validation Set (middle)**: Generalization begins to break down
-- **Test Set (bottom)**: Predictions revert toward a naive baseline
+## FinBERT Sentiment vs Price
+
+![Sentiment Analysis](images/sentiment_analysis.png)
+
+Daily FinBERT scores (bottom panel) are overlaid against recent price action (top panel). Blue bars in the feature importance chart highlight sentiment-derived features.
 
 ## Technical Indicators
 
 ![Technical Indicators](images/technical_indicators.png)
 
-RSI, MACD, and Bollinger Bands are included as momentum and volatility signals. Despite their widespread use in technical analysis, none produced reliable out-of-sample directional signal in this study.
-
 ## Feature Importance
 
 ![Feature Importance](images/feature_importance.png)
 
-The model distributes importance across many features rather than concentrating on a few — a pattern that often indicates the model is fitting noise rather than a stable signal.
+Sentiment features are highlighted in blue. The model distributes importance across many features — a pattern that often indicates fitting noise rather than a stable signal.
 
 ## Technical Approach
 
 ### Return-Based Prediction
 
-Rather than predicting absolute prices — which breaks down when test prices exceed the training range — the model predicts next-day percentage returns:
+Rather than predicting absolute prices, the model predicts next-day percentage returns:
 
 ```python
-# Scale-invariant target
 target = (tomorrow_close - today_close) / today_close
 predicted_price = today_close * (1 + predicted_return)
 ```
 
-### Feature Set (60+ indicators)
+### FinBERT Scoring
 
-**Trend:** SMA (5, 10, 20, 50, 200-day), EMA (10, 20, 50-day), price position relative to moving averages, SMA crossover signals
+```python
+from transformers import pipeline
 
-**Momentum:** RSI, MACD + signal line + histogram, rate of change (10, 20-day), momentum (5, 10, 20-day as pct_change)
+classifier = pipeline("sentiment-analysis", model="ProsusAI/finbert", return_all_scores=True)
+scores = classifier("Apple beats earnings expectations")[0]
+sentiment_score = P(positive) - P(negative)
+```
 
-**Volatility:** Bollinger Bands (upper, lower, width, position), ATR, rolling std (5, 10, 20-day)
+### Feature Set (70+ indicators)
 
-**Lag features:** Return lags (1, 2, 3, 5, 10, 20-day), volume lags — raw price lags excluded to avoid leakage
+**Technical:** SMA, EMA, RSI, MACD, Bollinger Bands, ATR, momentum, volatility, lag features, volume ratios, candlestick patterns
 
-**Volume:** Volume SMAs, volume ratio, price-volume interaction
-
-**Price patterns:** Candlestick body/shadow ratios, daily range %, gap %
+**Sentiment (FinBERT):** Daily score, probability breakdown, rolling averages, momentum, volatility, bullish/bearish flags
 
 ### Model
 
 ```python
 RandomForestRegressor(
     n_estimators=500,
-    max_depth=10,
-    min_samples_split=20,
-    min_samples_leaf=10,
+    max_depth=30,
+    min_samples_split=2,
+    min_samples_leaf=1,
     max_features='sqrt',
     random_state=42
 )
@@ -85,41 +111,27 @@ RandomForestRegressor(
 
 ### Data Split (chronological — no shuffling)
 
-| Split | Period | Days |
+| Split | Period | Share |
 |---|---|---|
-| Training (80%) | 2010–2022 | ~2,858 |
-| Validation (10%) | 2022–2023 | ~358 |
-| Test (10%) | 2023–2024 | ~358 |
-
-Chronological ordering is strictly enforced throughout. Raw OHLCV columns are excluded from the feature matrix — only engineered features are passed to the model — to prevent lookahead bias.
+| Training | 2010–2022 | 80% |
+| Validation | 2022–2023 | 10% |
+| Test | 2023–2024 | 10% |
 
 ## What I Learned
 
-**Overfitting is the central challenge.** Even with regularized hyperparameters (`max_depth=10`, `min_samples_leaf=10`), the model memorizes training patterns that don't generalize. Daily stock returns are dominated by noise, and a 60+ feature space gives the model too many opportunities to fit that noise.
+**Overfitting is the central challenge.** Daily stock returns are dominated by noise, and a large feature space gives the model too many opportunities to fit that noise.
 
-**The EMH holds here.** AAPL is one of the most liquid, most-watched stocks in the world. Any technical pattern that reliably predicted next-day direction would be arbitraged away almost immediately. This doesn't mean ML has no role in quantitative finance — it means daily technical indicators on a single large-cap equity are a weak signal source.
+**FinBERT adds a real alternative data channel** but Yahoo Finance news history is limited to recent headlines. For production use, pair FinPulse with a historical news archive (e.g. Finnhub, NewsAPI, or a proprietary feed).
 
-**What might actually help:**
-- Higher-frequency data (intraday) where microstructure effects are more exploitable
-- Alternative data sources: earnings sentiment, options flow, macro indicators
-- Cross-asset features: sector ETFs, VIX, yield curve
-- Shorter-horizon models that are less exposed to news-driven overnight gaps
+**The EMH holds here for daily large-cap prediction.** Any pattern that reliably predicted next-day direction would be arbitraged away almost immediately.
 
 ## Limitations
 
-- Technical data only — no fundamentals, sentiment, or macro features
+- Yahoo Finance news is recent-only — limited historical sentiment coverage
 - Single asset — no cross-sectional or portfolio-level analysis
-- Daily resolution — microstructure effects that drive HFT alpha are invisible here
+- Daily resolution — microstructure effects are invisible
 - No transaction costs, slippage, or market impact modeled
-- Directional accuracy alone is not a sufficient basis for a trading strategy
-
-## Future Work
-
-- Incorporate earnings sentiment and options flow data
-- Extend to multi-asset cross-sectional modeling
-- Experiment with walk-forward validation instead of a single fixed split
-- Try gradient boosting (XGBoost/LightGBM) with tighter regularization
-- Explore intraday data to access higher signal-to-noise regimes
+- FinBERT requires ~500MB model download on first run
 
 ## Installation
 
@@ -127,33 +139,38 @@ Chronological ordering is strictly enforced throughout. Raw OHLCV columns are ex
 pip install -r requirements.txt
 ```
 
-Requires Python 3.8+.
+Requires Python 3.8+. On first run, FinBERT weights are downloaded from Hugging Face (~500MB).
 
 ## Usage
 
 ```bash
-python quantbacktester.py
+python finpulse.py
 ```
+
+The legacy entry point `quantbacktester.py` still works but redirects to FinPulse.
 
 ## Project Structure
 
 ```
-quant-backtester/
-├── quantbacktester.py    # Main pipeline
+finpulse/
+├── finpulse.py            # Main pipeline (technical + FinBERT sentiment)
+├── sentiment_analyzer.py  # FinBERT news fetching and scoring
+├── quantbacktester.py     # Legacy alias
 ├── README.md
 ├── requirements.txt
 └── images/
     ├── predictions_all_sets.png
     ├── technical_indicators.png
+    ├── sentiment_analysis.png
     └── feature_importance.png
 ```
 
-## Data Source
+## Data Sources
 
-Yahoo Finance via `yfinance`.
+- **Price data:** Yahoo Finance via `yfinance`
+- **News headlines:** Yahoo Finance via `yfinance`
+- **Sentiment model:** [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert) via Hugging Face `transformers`
 
 ## License
 
 MIT License. For educational purposes only. Not financial advice.
-
-
