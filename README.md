@@ -14,6 +14,8 @@ This project applies supervised machine learning to financial time series foreca
 
 The project's value is in the rigor of the pipeline and the diagnosis of *why* the model fails — not in producing inflated accuracy numbers.
 
+> **Successor:** This experiment led directly to **[PulseX](https://github.com/MayhemGOAT/PulseX)**, which extends the pipeline with X/news sentiment and a real strategy backtest — the natural next step once technical signals alone proved too weak.
+
 ## Results
 
 | Split | Period | Directional Accuracy | MAE |
@@ -155,5 +157,3 @@ Yahoo Finance via `yfinance`.
 ## License
 
 MIT License. For educational purposes only. Not financial advice.
-
-
